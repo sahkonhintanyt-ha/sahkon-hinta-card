@@ -55,6 +55,7 @@ entity: sensor.sahkon_hinta_nyt
 # thresholds: [5, 10, 15]   # cheap / normal / expensive limits in snt/kWh
 # show_actions: true        # Ilmoitus / Ohjaus / Scene buttons
 # show_source: true
+# time_zone: Europe/Helsinki # times are shown in Finnish time by default
 ```
 
 ## Suomeksi
