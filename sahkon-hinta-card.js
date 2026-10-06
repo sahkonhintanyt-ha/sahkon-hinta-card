@@ -4,7 +4,7 @@
  * Works with sensor.sahkon_hinta_nyt from the sahkon-hinta-nyt-ha package.
  * License: MIT
  */
-const SHN_VERSION = "1.1.1";
+const SHN_VERSION = "1.2.0";
 const SHN_PREFIX = "shn_";
 
 const LEVELS = [
@@ -19,8 +19,15 @@ const DEVICE_DOMAINS = ["switch", "light", "input_boolean", "fan", "climate", "w
 const SCENE_DOMAINS = ["light", "switch", "fan", "climate", "input_boolean", "cover", "media_player"];
 
 class SahkonHintaCard extends HTMLElement {
-  static getStubConfig() {
-    return { entity: "sensor.sahkon_hinta_nyt" };
+  static getStubConfig(hass) {
+    let entity = "sensor.sahkon_hinta_nyt";
+    if (hass && hass.states && !hass.states[entity]) {
+      const found = Object.keys(hass.states).find(
+        (e) => e.startsWith("sensor.") && Array.isArray(hass.states[e].attributes.raw_today)
+      );
+      if (found) entity = found;
+    }
+    return { entity };
   }
 
   setConfig(config) {
@@ -204,19 +211,42 @@ class SahkonHintaCard extends HTMLElement {
         </svg><div class="ticks">${ticks}</div></div>`;
   }
 
+  /* ---------- example data ---------- */
+
+  _demoState() {
+    const now = Date.now();
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: this._tz(), hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+      }).formatToParts(new Date(now)).map((p) => [p.type, p.value])
+    );
+    const midnight = now - ((+parts.hour * 60 + +parts.minute) * 60 + +parts.second) * 1000;
+    const curve = [3.1, 2.6, 2.2, 1.9, 2.1, 3.4, 6.8, 11.2, 13.5, 9.8, 7.1, 5.9,
+      5.2, 4.8, 5.5, 7.4, 10.9, 16.3, 14.1, 9.6, 7.2, 5.4, 4.3, 3.6];
+    const raw_today = curve.map((v, i) => ({
+      start: new Date(midnight + i * 3600e3).toISOString(),
+      end: new Date(midnight + (i + 1) * 3600e3).toISOString(),
+      value: v,
+    }));
+    const cur = curve[Math.min(23, Math.max(0, +parts.hour))];
+    return {
+      state: String(cur),
+      attributes: {
+        raw_today, raw_tomorrow: [], tomorrow_valid: false,
+        cheapest_3h_start: raw_today[2].start, cheapest_3h_avg: 2.07,
+      },
+    };
+  }
+
   /* ---------- main (price) ---------- */
 
   _renderMain() {
     if (!this.shadowRoot || !this._config || !this._hass) return;
     const main = this._$("#main");
-    const st = this._stateObj;
-
-    if (!st) {
-      main.innerHTML = `<div class="title">${this._esc(this._config.name)}</div>
-        <p class="muted">Anturia <b>${this._esc(this._config.entity)}</b> ei löydy. Asenna paketti
-        sahkon-hinta-nyt-ha ja käynnistä Home Assistant uudelleen.</p>`;
-      return;
-    }
+    // Without the sensor (e.g. in the card picker before the integration is installed)
+    // show example data, clearly labelled, instead of an empty card.
+    const demo = !this._stateObj;
+    const st = this._stateObj || this._demoState();
 
     const a = st.attributes || {};
     const price = Number(st.state);
@@ -266,7 +296,9 @@ class SahkonHintaCard extends HTMLElement {
         <div><span>Keskihinta</span><b>${this._num(dayAvg)}</b></div>
         <div><span>Ylin</span><b>${this._num(dayMax)}</b></div>
       </div>
-      ${this._config.show_actions ? `
+      ${demo ? `<p class="demo">Esimerkkidata. Anturia <b>${this._esc(this._config.entity)}</b> ei löydy –
+        asenna Sähkön hinta nyt -integraatio HACSista.</p>` : ""}
+      ${this._config.show_actions && !demo ? `
       <div class="actions" role="tablist" aria-label="Automaatiot">
         <button data-panel="alert" aria-expanded="${p === "alert"}"><ha-icon icon="mdi:bell-outline"></ha-icon>Ilmoitus</button>
         <button data-panel="control" aria-expanded="${p === "control"}"><ha-icon icon="mdi:power-plug-outline"></ha-icon>Ohjaus</button>
@@ -718,6 +750,8 @@ class SahkonHintaCard extends HTMLElement {
       .src { display: block; margin-top: 10px; text-align: right; font-size: .7rem; color: var(--secondary-text-color); text-decoration: none; }
       .src:hover { text-decoration: underline; }
       .muted { color: var(--secondary-text-color); font-size: .9rem; }
+      .demo { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; font-size: .8rem; color: var(--secondary-text-color);
+        border: 1px dashed var(--shn-line); }
       @media (prefers-reduced-motion: reduce) { .bar { transition: none; } }
     </style>`;
   }
@@ -728,6 +762,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "sahkon-hinta-card",
   name: "Sähkön hinta",
+  preview: true,
   description: "Pörssisähkön hinta nyt, tänään ja huomenna sekä hintailmoitukset ja ohjaukset (sähkönhintanyt.org)",
   documentationURL: "https://github.com/sahkonhintanyt-ha/sahkon-hinta-card",
 });
