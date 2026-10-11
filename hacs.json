@@ -2,5 +2,6 @@
   "name": "Sähkön hinta card",
   "filename": "sahkon-hinta-card.js",
   "render_readme": true,
-  "homeassistant": "2024.10.0"
+  "homeassistant": "2024.10.0",
+  "country": ["FI"]
 }
